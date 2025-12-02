@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Terminal Python (Pyodide) — Terminal em HTML</title>
+  <style>
+    :root{--bg:#0b0f14;--panel:#0f1720;--accent:#36c;--muted:#9aa4b2;--mono:ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace}
+    html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial}
+    body{background:linear-gradient(180deg,#071022 0%, #081226 100%);color:#e6eef6;display:flex;align-items:center;justify-content:center;padding:20px}
+    .app{width:100%;max-width:1100px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:0 10px 30px rgba(2,6,23,0.6);border-radius:12px;overflow:hidden;display:grid;grid-template-columns:1fr 420px;gap:0}
+    header{grid-column:1/-1;padding:12px 20px;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:space-between}
+    header h1{font-size:16px;margin:0;font-weight:600}
+    .main{padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--panel)}
+    .editor{flex:1;display:flex;flex-direction:column;gap:8px}
+    textarea.code{flex:1;background:#061018;border:1px solid rgba(255,255,255,0.04);padding:12px;border-radius:8px;color:#dbe9ff;font-family:var(--mono);font-size:13px;resize:none;min-height:260px}
+    .controls{display:flex;gap:8px;align-items:center}
+    button{background:linear-gradient(180deg,var(--accent),#2347a6);border:none;padding:8px 12px;border-radius:8px;color:white;cursor:pointer;font-weight:600}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted);font-weight:500}
+    .output{background:#02060a;border:1px solid rgba(255,255,255,0.03);padding:12px;border-radius:8px;height:220px;overflow:auto;font-family:var(--mono);font-size:13px;color:#cfe8ff}
+    .side{padding:14px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.0));border-left:1px solid rgba(255,255,255,0.02);display:flex;flex-direction:column;gap:10px}
+    .side .section{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    select,input[type=file]{width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
+    small.note{color:var(--muted)}
+    footer{padding:10px 16px;font-size:12px;color:var(--muted);text-align:center}
+    @media (max-width:900px){.app{grid-template-columns:1fr;}.side{order:3}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Terminal Python (Pyodide) — Execução local</h1>
+      <div style="font-size:12px;color:var(--muted)">Ctrl+Enter para executar · Pyodide embutido</div>
+    </header>
+
+    <div class="main">
+      <div class="editor">
+        <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
+          <div style="display:flex;gap:8px;align-items:center">
+            <button id="runBtn">Executar (Ctrl+Enter)</button>
+            <button id="stopBtn" class="ghost">Limpar saída</button>
+            <button id="examplesBtn" class="ghost">Exemplos</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button id="downloadBtn" class="ghost">Salvar .py</button>
+            <button id="loadFileBtn" class="ghost">Carregar .py</button>
+            <input id="fileInput" type="file" accept=".py" style="display:none">
+          </div>
+        </div>
+
+        <textarea id="code" class="code" spellcheck="false" placeholder="# Escreva código Python aqui. Ex: print('hello world')\n"></textarea>
+
+        <div class="controls">
+          <div style="flex:1">Histórico: <select id="history" style="min-width:180px"></select></div>
+          <div style="display:flex;gap:8px">
+            <button id="clearHistory" class="ghost">Limpar histórico</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label>Saída / Terminal</label>
+        <pre id="output" class="output"></pre>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="section">
+        <label>Modo de execução</label>
+        <small class="note">Este terminal executa Python no navegador usando <strong>Pyodide</strong>. Não envia seu código para servidores externos.</small>
+      </div>
+
+      <div class="section">
+        <label>Ações rápidas</label>
+        <button id="embedBtn" class="ghost">Abrir online-python (iframe)</button>
+        <div style="margin-top:8px"><small class="note">Se preferir usar <em>online-python.com</em> via iframe, o site precisa permitir embed (CSP/iframe). Caso contrário, este terminal local é a alternativa.</small></div>
+      </div>
+
+      <div class="section">
+        <label>Configurações</label>
+        <div style="display:flex;gap:8px">
+          <select id="themeSelect">
+            <option value="dark">Escuro</option>
+            <option value="light">Claro (não muito testado)</option>
+          </select>
+        </div>
+      </div>
+
+    </aside>
+
+    <footer>Feito com Pyodide — execução totalmente local no navegador</footer>
+  </div>
+
+  <script>
+    // Elementos
+    const runBtn = document.getElementById('runBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const codeEl = document.getElementById('code');
+    const outputEl = document.getElementById('output');
+    const historySelect = document.getElementById('history');
+    const clearHistory = document.getElementById('clearHistory');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const fileInput = document.getElementById('fileInput');
+    const loadFileBtn = document.getElementById('loadFileBtn');
+    const examplesBtn = document.getElementById('examplesBtn');
+    const embedBtn = document.getElementById('embedBtn');
+
+    // Pequeno gerenciador de histórico local
+    function pushHistory(code){
+      if(!code.trim()) return;
+      const list = JSON.parse(localStorage.getItem('py_history')||'[]');
+      list.unshift({ts:Date.now(), code:code});
+      if(list.length>30) list.pop();
+      localStorage.setItem('py_history', JSON.stringify(list));
+      renderHistory();
+    }
+    function renderHistory(){
+      const list = JSON.parse(localStorage.getItem('py_history')||'[]');
+      historySelect.innerHTML = '';
+      list.forEach((item,idx)=>{
+        const opt = document.createElement('option');
+        const d = new Date(item.ts);
+        opt.value = idx; opt.textContent = d.toLocaleString()+ ' — ' + item.code.split('\n')[0].slice(0,80);
+        historySelect.appendChild(opt);
+      });
+    }
+    clearHistory.addEventListener('click',()=>{localStorage.removeItem('py_history');renderHistory();});
+
+    // Download .py
+    downloadBtn.addEventListener('click',()=>{
+      const blob = new Blob([codeEl.value],'text/plain');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'script.py';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+    loadFileBtn.addEventListener('click',()=> fileInput.click());
+    fileInput.addEventListener('change', async(e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      const txt = await f.text(); codeEl.value = txt; 
+    });
+
+    // Exemplos
+    examplesBtn.addEventListener('click', ()=>{
+      const ex = `# Exemplo: cálculo e impressão\nfor i in range(5):\n    print('número', i)\n\n# Usando pacotes (Pyodide) - experimente importar math\nimport math\nprint('cos(0)=', math.cos(0))\n`;
+      codeEl.value = ex;
+    });
+
+    // Abrir online-python em nova janela/iframe (tenta em popup)
+    embedBtn.addEventListener('click', ()=>{
+      window.open('https://www.online-python.com','_blank');
+    });
+
+    // Função de append na saída (expõe para Pyodide)
+    window.write_to_output = (s)=>{
+      const escaped = String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      outputEl.textContent += escaped;
+      outputEl.scrollTop = outputEl.scrollHeight;
+    }
+
+    function clearOutput(){ outputEl.textContent = '' }
+    stopBtn.addEventListener('click', clearOutput);
+
+    // Carregando Pyodide
+    let pyodide = null;
+    (async ()=>{
+      appendNote('Inicializando Pyodide — carregando runtime (pode demorar um pouco)...\n');
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js';
+      document.head.appendChild(script);
+      script.onload = async ()=>{
+        try{
+          pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.23.4/full/'});
+          await pyodide.runPythonAsync(`
+import sys
+from js import write_to_output
+class Writer:
+    def write(self,s):
+        # chamado pelo Python para cada print; converte para string
+        write_to_output(str(s))
+    def flush(self):
+        pass
+sys.stdout = Writer()
+sys.stderr = Writer()
+`);
+          appendNote('\nPyodide pronto. Agora você pode executar código localmente.\n');
+        }catch(err){
+          appendNote('\nErro ao carregar Pyodide: '+err+'\n');
+          console.error(err);
+        }
+      };
+    })();
+
+    function appendNote(text){ outputEl.textContent += text; outputEl.scrollTop = outputEl.scrollHeight }
+
+    // Executar código
+    let running = false;
+    async function runCode(){
+      if(!pyodide){ appendNote('\nPyodide ainda não está pronto.'); return; }
+      const userCode = codeEl.value;
+      pushHistory(userCode);
+      appendNote('\n>>> Executando...\n');
+      try{
+        running = true;
+        // Execução assíncrona com captura via sys.stdout redirecionado
+        await pyodide.runPythonAsync(userCode);
+        appendNote('\n>>> Execução terminada.\n');
+      }catch(err){
+        appendNote('\n[erro] '+String(err)+"\n");
+        console.error(err);
+      }finally{ running = false; }
+    }
+
+    runBtn.addEventListener('click', runCode);
+
+    // Atalho Ctrl+Enter
+    codeEl.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){
+        e.preventDefault(); runCode();
+      }
+    });
+
+    // Carregar item do histórico
+    historySelect.addEventListener('change', ()=>{
+      const list = JSON.parse(localStorage.getItem('py_history')||'[]');
+      const idx = Number(historySelect.value);
+      if(list[idx]) codeEl.value = list[idx].code;
+    });
+
+    // Renderiza histórico na carga
+    renderHistory();
+
+    // Tema (simples)
+    document.getElementById('themeSelect').addEventListener('change',(e)=>{
+      if(e.target.value==='light') document.documentElement.style.background='#f6f8fb';
+      else document.documentElement.style.background='';
+    });
+  </script>
+</body>
+</html>
