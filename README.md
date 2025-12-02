@@ -86,8 +86,7 @@ Interface criada sem dependências externas (leve e funcional)
 
 🖥️ Como executar
 1. Baixe ou clone o repositório:
-git clone https://github.com/SEU-USUARIO/SEU-REPO.git
-
+git clone=> https://github.com/tel36214287-star/Terminal-proprio/tree/main
 2. Abra o arquivo no navegador
 
 Basta clicar duas vezes em:
